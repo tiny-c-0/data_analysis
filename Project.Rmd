@@ -1,0 +1,144 @@
+---
+title: "Testing the Effects of Several Variables on Turkey's Exchange Rates, 1987-2017"
+output:
+  word_document: default
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(WDI)
+library(plotly)
+library(dplyr)
+library(rvest)
+library(data.table)
+library(ggplot2)
+library(ggpubr)
+library(OECD)
+
+```
+
+Fetching the GDP Growth data
+```{r}
+WDIsearch(string = "GDP Growth", 
+          field = "name", 
+          short = TRUE)
+```
+```{r} 
+Gdp_Growth <- data.frame(
+  WDI(country = "TR",
+      indicator ="NY.GDP.MKTP.KD.ZG",
+      start = 1987,
+      end = 2017,
+      extra = FALSE))
+```
+
+Fetching the Inflation data
+```{r}
+WDIsearch(string = "Inflation", 
+          field = "name", 
+          short = FALSE)
+```
+```{r} 
+GDP_deflator <- data.frame(
+  WDI(country = "TR",
+      indicator ="NY.GDP.DEFL.KD.ZG",
+      start = 1987,
+      end = 2017,
+      extra = TRUE))
+```
+
+Fetching the Interest Rate data
+```{r}
+WDIsearch(string = "Interest Rate", 
+          field = "name", 
+          short = TRUE)
+```
+
+```{r} 
+Interest_rates <- data.frame(
+  WDI(country = "TR",
+      indicator ="FR.INR.DPST",
+      start = 1987,
+      end = 2017,
+      extra = TRUE))
+```
+
+Fetching the Exchange Rate data
+```{r}
+WDIsearch(string = "exchange rate", 
+          field = "name", 
+          short = FALSE)
+```
+
+```{r}
+Exchange_rate_dataset <- get_datasets()
+search_dataset("Exchange Rate", data = Exchange_rate_dataset)
+
+```
+
+```{r}
+Exchange_rate <- get_dataset("SNA_TABLE4",
+                             filter = list("TUR","EXC"),
+                             start_time = 1987,
+                             end_time = 2017)
+```
+
+Creating the data frame
+```{r}
+df <- data.frame(Exchange_rate$Time, Exchange_rate$ObsValue, GDP_deflator$NY.GDP.DEFL.KD.ZG, Gdp_Growth$NY.GDP.MKTP.KD.ZG, Interest_rates$FR.INR.DPST)
+df$GDP_deflator.NY.GDP.DEFL.KD.ZG <- rev(df$GDP_deflator.NY.GDP.DEFL.KD.ZG)
+df$Gdp_Growth.NY.GDP.MKTP.KD.ZG <- rev(df$Gdp_Growth.NY.GDP.MKTP.KD.ZG)
+df$Interest_rates.FR.INR.DPST <- rev(df$Interest_rates.FR.INR.DPST)
+df$Exchange_rate.ObsValue <- as.numeric(df$Exchange_rate.ObsValue)
+```
+
+Checking the variables together with Multiple Linear Regression
+```{r}
+lm.df <- lm(df$Exchange_rate.ObsValue ~ df$GDP_deflator.NY.GDP.DEFL.KD.ZG + df$Gdp_Growth.NY.GDP.MKTP.KD.ZG + df$Interest_rates.FR.INR.DPST, data = df)
+summary(lm.df)
+```
+
+We can easily observe from p values that if we run a multiple linear regression, we can reject that
+inflation, GDP growth and interest rates are irrelevant to exchange rates. But we can also test that if one of these variables are also irrelevant in simple regression:
+
+```{r}
+lm.df1 <- lm(df$Exchange_rate.ObsValue ~ df$GDP_deflator.NY.GDP.DEFL.KD.ZG, data = df)
+summary(lm.df1)
+
+lm.df2 <- lm(df$Exchange_rate.ObsValue ~ df$Gdp_Growth.NY.GDP.MKTP.KD.ZG, data = df)
+summary(lm.df2)
+
+lm.df3 <- lm(df$Exchange_rate.ObsValue ~ df$Interest_rates.FR.INR.DPST, data = df)
+summary(lm.df3)
+```
+
+After testing the variables one by one, we can observe that GDP growth is irrelevant to exchange rates. Also we know that inflation and interest rates are correlated as we can see in the next regression:
+
+```{r}
+lm.df4 <- lm(df$Exchange_rate.ObsValue ~ df$GDP_deflator.NY.GDP.DEFL.KD.ZG +  df$Interest_rates.FR.INR.DPST, data = df)
+summary(lm.df4)
+```
+
+So we can interpret the simple linear regressions 1 and 3 to look at the effects of inflation and interest rates on the exchange rates:
+
+```{r}
+ggplot(df,aes(Interest_rates.FR.INR.DPST, Exchange_rate.ObsValue)) +
+  geom_point(color="red") +
+  geom_smooth() +
+  theme_minimal() +
+  labs(x='Interest Rates', y='Exchange Rate(USD to TRY)', title='Interest Rates effect on Exchange Rate') +
+  theme(plot.title = element_text(hjust=0.5, size=15, face='bold'))
+```
+
+```{r}
+ggplot(df,aes(GDP_deflator.NY.GDP.DEFL.KD.ZG, Exchange_rate.ObsValue)) +
+  geom_point(color="red") +
+  geom_smooth() +
+  theme_minimal() +
+  labs(x='GDP Deflator', y='Exchange Rate(USD to TRY)', title='GDP Deflator effect on Exchange Rate') +
+  theme(plot.title = element_text(hjust=0.5, size=15, face='bold'))
+```
+
+We observe that dots are mainly inside of the confident interval, so we can say that interest rates and inflation were affecting the exchange rates between 1987 and 2017.
